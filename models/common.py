@@ -25,6 +25,7 @@ from utils.general import (LOGGER, ROOT, check_requirements, check_suffix, check
                            make_divisible, non_max_suppression, scale_coords, xywh2xyxy, xyxy2xywh, yaml_load)
 from utils.plots import Annotator, colors, save_one_box
 from utils.torch_utils import copy_attr, smart_inference_mode, time_sync
+import torch.nn.functional as F
 
 
 def autopad(k, p=None):  # kernel, padding
@@ -769,3 +770,118 @@ class Classify(nn.Module):
         if isinstance(x, list):
             x = torch.cat(x, 1)
         return self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
+
+
+"""
+    add some modules
+"""
+
+
+# CBAM
+
+
+class Flatten(nn.Module):
+    def forward(self, x):
+        return x.view(x.size(0), -1)
+
+
+class ChannelGate(nn.Module):
+    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
+        super(ChannelGate, self).__init__()
+        self.gate_channels = gate_channels
+        self.mlp = nn.Sequential(
+            Flatten(),
+            nn.Linear(gate_channels, gate_channels // reduction_ratio),
+            nn.ReLU(),
+            nn.Linear(gate_channels // reduction_ratio, gate_channels)
+        )
+        self.pool_types = pool_types
+
+    def forward(self, x):
+        channel_att_sum = None
+        for pool_type in self.pool_types:
+            if pool_type == 'avg':
+                avg_pool = F.avg_pool2d(x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp(avg_pool)
+            elif pool_type == 'max':
+                max_pool = F.max_pool2d(x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp(max_pool)
+            elif pool_type == 'lp':
+                lp_pool = F.lp_pool2d(x, 2, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
+                channel_att_raw = self.mlp(lp_pool)
+            elif pool_type == 'lse':
+                # LSE pool only
+                lse_pool = logsumexp_2d(x)
+                channel_att_raw = self.mlp(lse_pool)
+
+            if channel_att_sum is None:
+                channel_att_sum = channel_att_raw
+            else:
+                channel_att_sum = channel_att_sum + channel_att_raw
+
+        scale = torch.sigmoid(channel_att_sum).unsqueeze(2).unsqueeze(3).expand_as(x)
+        return x * scale
+
+
+def logsumexp_2d(tensor):
+    tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
+    s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
+    outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
+    return outputs
+
+
+class ChannelPool(nn.Module):
+    def forward(self, x):
+        return torch.cat((torch.max(x, 1)[0].unsqueeze(1), torch.mean(x, 1).unsqueeze(1)), dim=1)
+
+
+class SpatialGate(nn.Module):
+    def __init__(self, g=1):
+        super(SpatialGate, self).__init__()
+        kernel_size = 7
+        self.compress = ChannelPool()
+        self.spatial = Conv(2, 1, kernel_size, 1, g=g)
+
+    def forward(self, x):
+        x_compress = self.compress(x)
+        x_out = self.spatial(x_compress)
+        scale = torch.sigmoid(x_out)  # broadcasting
+        return x * scale
+
+
+class CBAM(nn.Module):
+    def __init__(self, c1, c2, shortcut=False, g=1, pool_types=['avg', 'max'], reduction_ratio=16, no_spatial=False):
+        super(CBAM, self).__init__()
+        self.ChannelGate = ChannelGate(c2, reduction_ratio, pool_types)
+        self.no_spatial = no_spatial
+        if not no_spatial:
+            self.SpatialGate = SpatialGate(g=g)
+        self.shortcut = shortcut
+
+    def forward(self, x):
+        x_out = self.ChannelGate(x)
+        if not self.no_spatial:
+            x_out = self.SpatialGate(x_out)
+        if self.shortcut is True:
+            return x + x_out
+        return x_out
+
+
+class ResCBAM(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, pool_types=['avg', 'max'], reduction_ratio=16):
+        super(ResCBAM, self).__init__()
+        self.m = nn.Sequential(*(CBAM(c1, c2, shortcut, g) for _ in range(n)))
+
+    def forward(self, x):
+        x_out = self.m(x)
+        return x_out
+
+
+class C3ResCBAM(C3):
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1):
+        super(C3ResCBAM, self).__init__(c1, c2, n, shortcut)
+        c_ = int(c2 * 0.5)
+        self.m = nn.Sequential(*(CBAM(c_, c_, shortcut, g) for _ in range(n)))
+
+
+
