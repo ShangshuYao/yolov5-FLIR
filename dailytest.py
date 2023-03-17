@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import yaml
 
 import torch
-from models.common import CBAM, ResCBAM, C3ResCBAM
+from models.common import *
 from utils.general import check_yaml, intersect_dicts
 from models.yolo import DetectionModel
 from utils.torch_utils import select_device
@@ -38,8 +38,9 @@ if __name__ == '__main__':
     # csd = weight['model'].float().state_dict()  # checkpoint state_dict as FP32
     # csd = intersect_dicts(csd, model.state_dict(), exclude=exclude)  # intersect
     # model.load_state_dict(csd, strict=False)  # load
-    model = C3ResCBAM(64, 64, 3, True).to(device)
-    print(model)
+    model = C3ConvNext(64, 128, n=3).to(device)
+    for i in model.modules():
+        print(i)
     im = torch.ones(1, 64, opt.imgsz, opt.imgsz).to(device)
     res = model(im)
     print(res, res.shape)

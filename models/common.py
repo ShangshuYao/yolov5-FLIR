@@ -884,4 +884,72 @@ class C3ResCBAM(C3):
         self.m = nn.Sequential(*(CBAM(c_, c_, shortcut, g) for _ in range(n)))
 
 
+class InvertBottleneck(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_, c_, 3, 1, g=g)
+        self.cv3 = Conv(c_, c2, 1, 1)
+        self.add = shortcut and c1 == c2
 
+    def forward(self, x):
+        return x + self.cv3(self.cv2(self.cv1(x))) if self.add else self.cv3(self.cv2(self.cv1(x)))
+
+
+class C3InvertBottleneck(C3):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__(c1, c2, n, shortcut)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(InvertBottleneck(c_, c_, shortcut, g, e=2.0) for _ in range(n)))
+
+
+# class ConvNext(nn.Module):
+#     # Standard bottleneck
+#     def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+#         super().__init__()
+#         c_ = int(c2 * e)  # hidden channels
+#         self.cv1 = Conv(c1, c_, 1, 1)
+#         self.cv2 = Conv(c_, c_, 3, 1, g=g)
+#         self.cv3 = Conv(c_, c2, 1, 1)
+#         self.add = shortcut and c1 == c2
+#
+#     def forward(self, x):
+#         return x + self.cv3(self.cv2(self.cv1(x))) if self.add else self.cv3(self.cv2(self.cv1(x)))
+
+
+class ConvNextBlock(nn.Module):
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.dwconv = nn.Conv2d(c1, c1, kernel_size=7, padding=3, groups=c1) # depthwise conv
+        self.norm = nn.LayerNorm(c1, eps=1e-6)
+        self.pwconv1 = nn.Linear(c1, c_)  # pointwise/1x1 convs, implemented with linear layers
+        self.act = nn.GELU()
+        self.pwconv2 = nn.Linear(c_, c2)
+        # self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((dim)), requires_grad=True) if layer_scale_init_value > 0 else None
+        # self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+
+    def forward(self, x):
+        input = x
+        x = self.dwconv(x)
+        x = x.permute(0, 2, 3, 1) # (N, C, H, W) -> (N, H, W, C)
+        x = self.norm(x)
+        x = self.pwconv1(x)
+        x = self.act(x)
+        x = self.pwconv2(x)
+        # if self.gamma is not None:
+        #     x = self.gamma * x
+        x = x.permute(0, 3, 1, 2) # (N, H, W, C) -> (N, C, H, W)
+        x = input + x
+        return x
+
+
+class C3ConvNext(C3):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__(c1, c2, n, shortcut)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(ConvNextBlock(c_, c_, shortcut, g, e=4.0) for _ in range(n)))
