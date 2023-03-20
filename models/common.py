@@ -906,20 +906,6 @@ class C3InvertBottleneck(C3):
         self.m = nn.Sequential(*(InvertBottleneck(c_, c_, shortcut, g, e=2.0) for _ in range(n)))
 
 
-# class ConvNext(nn.Module):
-#     # Standard bottleneck
-#     def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
-#         super().__init__()
-#         c_ = int(c2 * e)  # hidden channels
-#         self.cv1 = Conv(c1, c_, 1, 1)
-#         self.cv2 = Conv(c_, c_, 3, 1, g=g)
-#         self.cv3 = Conv(c_, c2, 1, 1)
-#         self.add = shortcut and c1 == c2
-#
-#     def forward(self, x):
-#         return x + self.cv3(self.cv2(self.cv1(x))) if self.add else self.cv3(self.cv2(self.cv1(x)))
-
-
 class ConvNextBlock(nn.Module):
     def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):
         super().__init__()
@@ -953,3 +939,47 @@ class C3ConvNext(C3):
         super().__init__(c1, c2, n, shortcut)
         c_ = int(c2 * e)  # hidden channels
         self.m = nn.Sequential(*(ConvNextBlock(c_, c_, shortcut, g, e=4.0) for _ in range(n)))
+
+
+class DWInvertBottleneck(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        # self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv1 = nn.Conv2d(c1, c_, 1, 1)    # 不使用激活函数
+        self.dwcv2 = Conv(c_, c_, 3, 1, g=c_)
+        self.cv3 = Conv(c_, c2, 1, 1)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        return x + self.cv3(self.dwcv2(self.cv1(x))) if self.add else self.cv3(self.dwcv2(self.cv1(x)))
+
+
+class C3DWInvertBottleneck(C3):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__(c1, c2, n, shortcut)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(DWInvertBottleneck(c_, c_, shortcut, g, e=2.0) for _ in range(n)))
+
+
+class ConvSPPF(nn.Module):
+    # Spatial Pyramid Pooling - Fast (SPPF) layer for YOLOv5 by Glenn Jocher
+    def __init__(self, c1, c2):  # equivalent to SPP(k=(5, 9, 13))
+        super().__init__()
+        c_ = c1 // 2  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_ * 4, c2, 1, 1)
+        self.m1 = nn.Sequential(
+            *(nn.Conv2d(c_, c_, kernel_size=3, stride=1, padding=autopad(3, 1)) for _ in range(1)))
+        self.m2 = nn.Sequential(
+            *(nn.Conv2d(c_, c_, kernel_size=3, stride=1, padding=autopad(3, 1)) for _ in range(2)))
+        self.m3 = nn.Sequential(
+            *(nn.Conv2d(c_, c_, kernel_size=3, stride=1, padding=autopad(3, 1)) for _ in range(3)))
+
+    def forward(self, x):
+        x = self.cv1(x)
+        y1 = self.m1(x)
+        y2 = self.m2(y1)
+        return self.cv2(torch.cat((x, y1, y2, self.m3(y2)), 1))
