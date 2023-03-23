@@ -10,7 +10,10 @@
 #python ./models/yolo.py --cfg 'yolov5m-baseline.yaml'
 #python ./models/yolo.py --cfg 'C3InvertBottleDW-Bifpn-1.yaml'
 #python ./models/yolo.py --cfg 'C3InvertBottleDW-Bifpn-ConvSppf.yaml'
-
+#python ./models/yolo.py --cfg 'C3InvertBottle-Bifpn-CBAM.yaml'
+#python ./models/yolo.py --cfg 'C3InvertBottle-Bifpn-ConvSppf.yaml'
+#python ./models/yolo.py --cfg 'C3InvertBottle-Bifpn-upsample.yaml'
+#python ./models/yolo.py --cfg 'C3InvertBottle-BifpnL.yaml'
 
 #python ./train.py --cfg 'yolo-CBAM-4.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #
@@ -39,4 +42,8 @@
 
 #python ./train.py --cfg 'C3InvertBottleDW-Bifpn.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #python ./train.py --cfg 'C3InvertBottleDW-Bifpn-1.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
-python ./train.py --cfg 'C3InvertBottleDW-Bifpn-ConvSppf.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'C3InvertBottleDW-Bifpn-ConvSppf.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'C3InvertBottle-Bifpn-CBAM.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'C3InvertBottle-Bifpn-ConvSppf.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'C3InvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+python ./train.py --cfg 'C3InvertBottle-BifpnL.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
