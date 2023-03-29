@@ -15,6 +15,7 @@ from models.common import *
 from utils.general import check_yaml, intersect_dicts
 from models.yolo import DetectionModel
 from utils.torch_utils import select_device
+from torchsummary import summary
 
 
 if __name__ == '__main__':
@@ -38,11 +39,13 @@ if __name__ == '__main__':
     # csd = weight['model'].float().state_dict()  # checkpoint state_dict as FP32
     # csd = intersect_dicts(csd, model.state_dict(), exclude=exclude)  # intersect
     # model.load_state_dict(csd, strict=False)  # load
-    model = C3ConvNext(64, 128, n=3).to(device)
-    for i in model.modules():
-        print(i)
+    model = C3InvertBottleneckInception(64, 64, 3, True, 16).to(device)
+    # for i in model.modules():
+    #     print(i)
     im = torch.ones(1, 64, opt.imgsz, opt.imgsz).to(device)
     res = model(im)
+    # summary(model, (64, 640, 640))
+    # print(model)
     print(res, res.shape)
 
 

@@ -898,6 +898,36 @@ class InvertBottleneck(nn.Module):
         return x + self.cv3(self.cv2(self.cv1(x))) if self.add else self.cv3(self.cv2(self.cv1(x)))
 
 
+class NoActInvertBottleneck(InvertBottleneck):
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__(c1, c2, shortcut=shortcut, g=g, e=e)
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = nn.Conv2d(c1, c_, 1, 1)
+
+
+class PreActInvertBottleneck(InvertBottleneck):
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__(c1, c2, shortcut=shortcut, g=g, e=e)
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = PreActConv(c1, c_, 1, 1)
+
+
+class C3PreActInvertBottleneck(C3):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__(c1, c2, n, shortcut)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(PreActInvertBottleneck(c_, c_, shortcut, g, e=2.0) for _ in range(n)))
+
+
+class C3NoActInvertBottleneck(C3):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__(c1, c2, n, shortcut)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(NoActInvertBottleneck(c_, c_, shortcut, g, e=2.0) for _ in range(n)))
+
+
 class C3InvertBottleneck(C3):
     # CSP Bottleneck with 3 convolutions
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
@@ -910,7 +940,7 @@ class ConvNextBlock(nn.Module):
     def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
-        self.dwconv = nn.Conv2d(c1, c1, kernel_size=7, padding=3, groups=c1) # depthwise conv
+        self.dwconv = nn.Conv2d(c1, c1, kernel_size=7, padding=3, groups=c1)  # depthwise conv
         self.norm = nn.LayerNorm(c1, eps=1e-6)
         self.pwconv1 = nn.Linear(c1, c_)  # pointwise/1x1 convs, implemented with linear layers
         self.act = nn.GELU()
@@ -921,14 +951,14 @@ class ConvNextBlock(nn.Module):
     def forward(self, x):
         input = x
         x = self.dwconv(x)
-        x = x.permute(0, 2, 3, 1) # (N, C, H, W) -> (N, H, W, C)
+        x = x.permute(0, 2, 3, 1)  # (N, C, H, W) -> (N, H, W, C)
         x = self.norm(x)
         x = self.pwconv1(x)
         x = self.act(x)
         x = self.pwconv2(x)
         # if self.gamma is not None:
         #     x = self.gamma * x
-        x = x.permute(0, 3, 1, 2) # (N, H, W, C) -> (N, C, H, W)
+        x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
         x = input + x
         return x
 
@@ -947,7 +977,7 @@ class DWInvertBottleneck(nn.Module):
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
         # self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv1 = nn.Conv2d(c1, c_, 1, 1)    # 不使用激活函数
+        self.cv1 = nn.Conv2d(c1, c_, 1, 1)  # 不使用激活函数
         self.dwcv2 = Conv(c_, c_, 3, 1, g=c_)
         self.cv3 = Conv(c_, c2, 1, 1)
         self.add = shortcut and c1 == c2
@@ -1071,4 +1101,108 @@ class UpSample(nn.Module):
         x = self.cv1(x)
         x = self.upsample(x)
         return x
+
+
+class PreActConv(nn.Module):
+    # Standard convolution
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
+        self.bn = nn.BatchNorm2d(c1)
+        self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+
+    def forward(self, x):
+        return self.conv(self.act(self.bn(x)))
+
+    def forward_fuse(self, x):
+        return self.conv(self.act(x))
+
+
+# 改进的transformer C3模块   https://arxiv.org/abs/2107.12292
+class CoT3(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.cv3 = Conv(2 * c_, c2, 1)  # act=FReLU(c2)
+        self.m = nn.Sequential(*[CoTBottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+
+    def forward(self, x):
+        return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), dim=1))
+
+
+class CoTBottleneck(nn.Module):
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super(CoTBottleneck, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = CoT(c_, 3)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+
+
+class CoT(nn.Module):
+    # Contextual Transformer Networks https://arxiv.org/abs/2107.12292
+    def __init__(self, dim=512, kernel_size=3):
+        super().__init__()
+        self.dim = dim
+        self.kernel_size = kernel_size
+
+        self.key_embed = nn.Sequential(
+            nn.Conv2d(dim, dim, kernel_size=kernel_size, padding=kernel_size // 2, groups=4, bias=False),
+            nn.BatchNorm2d(dim),
+            nn.ReLU()
+        )
+        self.value_embed = nn.Sequential(
+            nn.Conv2d(dim, dim, 1, bias=False),
+            nn.BatchNorm2d(dim)
+        )
+
+        factor = 4
+        self.attention_embed = nn.Sequential(
+            nn.Conv2d(2 * dim, 2 * dim // factor, 1, bias=False),
+            nn.BatchNorm2d(2 * dim // factor),
+            nn.ReLU(),
+            nn.Conv2d(2 * dim // factor, kernel_size * kernel_size * dim, 1)
+        )
+
+    def forward(self, x):
+        bs, c, h, w = x.shape
+        k1 = self.key_embed(x)  # bs,c,h,w
+        v = self.value_embed(x).view(bs, c, -1)  # bs,c,h,w
+
+        y = torch.cat([k1, x], dim=1)  # bs,2c,h,w
+        att = self.attention_embed(y)  # bs,c*k*k,h,w
+        att = att.reshape(bs, c, self.kernel_size * self.kernel_size, h, w)
+        att = att.mean(2, keepdim=False).view(bs, c, -1)  # bs,c,h*w
+        k2 = F.softmax(att, dim=-1) * v
+        k2 = k2.view(bs, c, h, w)
+
+        return k1 + k2
+
+
+class CoTInvertBottleneck(InvertBottleneck):
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__(c1, c2, shortcut=shortcut, g=g, e=e)
+        c_ = int(c2 * e)  # hidden channels
+        self.cv2 = CoT(c_, 3)
+
+
+class CoT3InvertBottleneck(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.cv3 = Conv(2 * c_, c2, 1)
+        self.m = nn.Sequential(*[CoTInvertBottleneck(c_, c_, shortcut, g, e=2) for _ in range(n)])
+
+    def forward(self, x):
+        return self.cv3(torch.cat((self.m(self.cv1(x)), self.cv2(x)), dim=1))
+
+
+
 
