@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# 测试网络模块可用性
 #python ./models/yolo.py --cfg 'yolo-C3ResCBAM.yaml'
 #python ./models/yolo.py --cfg 'yolo-C3ResCBAM-1.yaml'
 #python ./models/yolo.py --cfg 'yolo-C3ResCBAM-2.yaml'
@@ -20,7 +21,14 @@
 #python ./models/yolo.py --cfg 'InvertBottleincep-Bifpn-upsample-1.yaml'
 #python ./models/yolo.py --cfg 'InvertBottleincep-Bifpn-upsample-2.yaml'
 #python ./models/yolo.py --cfg 'CoT3InvertBottle-Bifpn-upsample.yaml'
+#python ./models/yolo.py --cfg 'C3NoActInvertBottle-Bifpn-upsample.yaml'
+#python ./models/yolo.py --cfg 'C3-Bifpn-Invertbottle-upsample.yaml'
+#python ./models/yolo.py --cfg 'PconvInvertBottle-Bifpn-upsample.yaml'
+#python ./models/yolo.py --cfg 'C3InvertBottle-Bifpn-upsample.yaml'
+python ./models/yolo.py --cfg 'C3RepTest-Bifpn-upsample.yaml'
 
+
+# 开始训练
 #python ./train.py --cfg 'yolo-CBAM-4.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #
 #python ./train.py --cfg 'yolo-C3ResCBAM.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
@@ -58,7 +66,26 @@
 #python ./train.py --cfg 'C3PreActInvertBottle-Bifpn.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #python ./train.py --cfg 'InvertBottleincep-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #python ./train.py --cfg 'InvertBottleincep-Bifpn-upsample-1.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
-python ./train.py --cfg 'InvertBottleincep-Bifpn-upsample-2.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'InvertBottleincep-Bifpn-upsample-2.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #python ./train.py --cfg 'CoT3InvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'C3NoActInvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'C3InvertBottle-Cat-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'C3-Bifpn-Invertbottle-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'PconvInvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./dailytest.py --fl_gamma 0.3
+#python ./train.py --cfg 'C3InvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-flgamma.yaml'
+#python ./dailytest.py --fl_gamma 0.6
+#python ./train.py --cfg 'C3InvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-flgamma.yaml'
+#python ./dailytest.py --fl_gamma 1.0
+#python ./train.py --cfg 'C3InvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-flgamma.yaml'
+#python ./dailytest.py --fl_gamma 1.3
+#python ./train.py --cfg 'C3InvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-flgamma.yaml'
+#python ./dailytest.py --fl_gamma 1.6
+#python ./train.py --cfg 'C3InvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-flgamma.yaml'
+#python ./dailytest.py --fl_gamma 2.0
+#python ./train.py --cfg 'C3InvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-flgamma.yaml'
+#python ./train.py --cfg 'C3InvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+
+
 
 
