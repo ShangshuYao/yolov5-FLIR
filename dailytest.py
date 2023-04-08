@@ -16,7 +16,7 @@ from utils.general import check_yaml, intersect_dicts
 from models.yolo import DetectionModel
 from utils.torch_utils import select_device
 from torchsummary import summary
-
+from utils.autoanchor import kmean_anchors
 
 
 if __name__ == '__main__':
@@ -55,27 +55,8 @@ if __name__ == '__main__':
     # model = C3InvertBottleneckInception(64, 64, 3, True, 16).to(device)
     # for i in model.modules():
     #     print(i)
-    im = torch.ones(1, 1, 4, 4)
-    model1 = nn.Conv2d(1, 1, 3, 1, 1, bias=False)
-    model1.weight.data = torch.Tensor([[[[1, 2, 3],
-                                        [4, 5, 6],
-                                        [7, 8, 9]]]])
-
-    model2 = nn.Conv2d(1, 1, 3, 1, 1, bias=False)
-    model2.weight.data = torch.Tensor([[[[1, 2, 3],
-                                        [4, 5, 6],
-                                        [7, 8, 9]]]])
-
-    model3 = nn.Conv2d(1, 1, 3, 1, 1, bias=False)
-    model3.weight.data = model1.weight.data + model2.weight.data
-
-    res1 = model1(im)
-    res2 = model2(im)
-    res = res1 + res2
-
-    out = model3(im)
-    print(res, out)
-
+    data = r'D:\StudyFile\Yao\yolov5-FLIR\data\FLIR.yaml'
+    anchor = kmean_anchors(data, 3)
 
 
 

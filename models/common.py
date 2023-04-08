@@ -973,17 +973,23 @@ class C3ConvNext(C3):
 
 class DWInvertBottleneck(nn.Module):
     # Standard bottleneck
-    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+    def __init__(self, c1, c2, shortcut=True, g=1, e=6.0):  # ch_in, ch_out, shortcut, groups, expansion
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
-        # self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv1 = nn.Conv2d(c1, c_, 1, 1)  # 不使用激活函数
-        self.dwcv2 = Conv(c_, c_, 3, 1, g=c_)
-        self.cv3 = Conv(c_, c2, 1, 1)
+        self.m = nn.Sequential(
+            nn.Conv2d(c1, c_, 1, 1, bias=False),
+            nn.BatchNorm2d(c_),
+            nn.ReLU6(inplace=True),
+            nn.Conv2d(c_, c_, 3, 1, 1, groups=c_, bias=False),
+            nn.BatchNorm2d(c_),
+            nn.ReLU6(inplace=True),
+            nn.Conv2d(c_, c2, 1, 1, bias=False),
+            nn.BatchNorm2d(c2)
+        )
         self.add = shortcut and c1 == c2
 
     def forward(self, x):
-        return x + self.cv3(self.dwcv2(self.cv1(x))) if self.add else self.cv3(self.dwcv2(self.cv1(x)))
+        return x + self.m(x) if self.add else self.m(x)
 
 
 class C3DWInvertBottleneck(C3):
@@ -991,7 +997,7 @@ class C3DWInvertBottleneck(C3):
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
         super().__init__(c1, c2, n, shortcut)
         c_ = int(c2 * e)  # hidden channels
-        self.m = nn.Sequential(*(DWInvertBottleneck(c_, c_, shortcut, g, e=2.0) for _ in range(n)))
+        self.m = nn.Sequential(*(DWInvertBottleneck(c_, c_, shortcut, g) for _ in range(n)))
 
 
 class ConvSPPF(SPPF):
@@ -1258,7 +1264,7 @@ class CondConvInvertBottleneck(nn.Module):
         self.cv2 = nn.Sequential(CondConv2d(c_, c_, 3, 1, padding=autopad(3, 1), bias=False),
                                  nn.BatchNorm2d(c_),
                                  nn.ReLU())
-        self.cv3 = nn.Sequential(CondConv2d(c_, c2, 1, 1,bias=False),
+        self.cv3 = nn.Sequential(CondConv2d(c_, c2, 1, 1, bias=False),
                                  nn.BatchNorm2d(c2),
                                  nn.ReLU())
         self.add = shortcut and c1 == c2
@@ -1267,74 +1273,105 @@ class CondConvInvertBottleneck(nn.Module):
         return x + self.cv3(self.cv2(self.cv1(x))) if self.add else self.cv3(self.cv2(self.cv1(x)))
 
 
-class C3VOVnetBlock(nn.Module):
+class ELANBlock(nn.Module):
     # Standard bottleneck
-    def __init__(self, c1, c2, g=1, e=2):  # ch_in, ch_out, shortcut, groups, expansion
+    def __init__(self, c1, c2, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
         super().__init__()
-        c_ = int(c2 * e)  # hidden channels
+        c_ = int(c1 * e)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv2 = Conv(c_, c_, 3, 1, g=g)
-        self.cv3 = Conv(c_, c_, 3, 1, g=g)
-        self.cv4 = Conv(2*c_, c1, 1, 1)
+        self.cv2 = Conv(c_, c1, 3, 1, g=g)
+        self.cv3 = Conv(c1, c1, 3, 1, g=g)
+        self.cv4 = Conv(c1, c1, 3, 1, g=g)
         self.cv5 = Conv(c1, c1, 3, 1, g=g)
-        self.cv6 = Conv(c1, c1, 3, 1, g=g)
-        self.cv7 = Conv(4*c1, c2, 1, 1)
+        self.cv6 = Conv(c1, c_, 1, 1)
+        self.cv7 = Conv(3 * c1, c2, 1, 1)
 
     def forward(self, x):
         x1 = self.cv1(x)
-        x1 = self.cv2(x1)
-        x2 = self.cv3(x1)
-        out2 = self.cv4(torch.cat((x1, x2), 1))
-        out3 = self.cv5(out2)
-        out4 = self.cv6(out3)
-        out = torch.cat((x, out2, out3, out4), 1)
+
+        x2 = self.cv6(x)
+
+        x3 = self.cv2(x1)
+        x3 = self.cv3(x3)
+
+        x4 = self.cv4(x3)
+        x4 = self.cv5(x4)
+
+        out = torch.cat((x1, x2, x3, x4), 1)
         out = self.cv7(out)
+
         return out
 
 
-class C3VOVnet(nn.Module):
+class MP(nn.Module):
     # Standard bottleneck
-    def __init__(self, c1, c2, n, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+    def __init__(self, c1, c2, s=1, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv2 = Conv(c_, c2, 1, 1)
-        self.m = nn.Sequential(*(C3VOVnetBlock(c_, c_) for _ in range(n)))
+        self.cv2 = Conv(c1, c_, 1, 1)
+        if s == 1:
+            self.mp = nn.MaxPool2d(3, 1, 1)
+            self.cv3 = Conv(c_, c_, 3, 1)
+        elif s == 2:
+            self.mp = nn.MaxPool2d(2, 2)
+            self.cv3 = Conv(c_, c_, 3, 2)
 
     def forward(self, x):
-        x = self.cv1(x)
-        x = self.m(x)
-        out = self.cv2(x)
+        x1 = self.mp(x)
+        x1 = self.cv1(x1)
+
+        x2 = self.cv2(x)
+        x2 = self.cv3(x2)
+
+        out = torch.cat((x1, x2), 1)
         return out
 
 
-class RepTest(nn.Module):
-    def __init__(self, c1, c2, shortcut=True, g=1, e=2.0):  # ch_in, ch_out, shortcut, groups, expansion
+class RepConv(nn.Module):
+    def __init__(self, c1, c2):  # ch_in, ch_out, shortcut, groups, expansion
         super().__init__()
-        c_ = int(c2 * e)  # hidden channels
-        self.cv1 = Conv(c1, c_, 1, 1)
-        self.cv2 = nn.Conv2d(c_, c_, 3, 1, 1)
-        self.bn1 = nn.BatchNorm2d(c_)
-        self.cv3 = nn.Conv2d(c_, c_, 1, 1)
-        self.bn2 = nn.BatchNorm2d(c_)
-        self.cv4 = Conv(c_, c2, 1, 1)
+
+        self.cv1 = Conv(c1, c2, 1, 1)
+        self.bn1 = nn.BatchNorm2d(c2)
+        self.cv2 = nn.Conv2d(c1, c2, 3, 1, 1)
+        self.bn2 = nn.BatchNorm2d(c2)
+        self.bn3 = nn.BatchNorm2d(c1)
+        self.act = nn.SiLU()
+
+    def forward(self, x):
+        x1 = self.cv1(x)
+        x1 = self.bn1(x1)
+
+        x2 = self.cv2(x)
+        x2 = self.bn2(x2)
+
+        x3 = self.bn2(x)
+
+        out = self.act(x1 + x2 + x3)
+        return out
+
+
+class GhostInvertBottleneck(nn.Module):
+    def __init__(self, c1, c2, shortcut=True):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        self.cv1 = Conv(c1, c1, 3, 1)
+        self.cv2 = Conv(c1, c1, 3, 1, g=c1)
+        self.cv3 = Conv(2*c1, c2, 1, 1)
         self.add = shortcut and c1 == c2
 
     def forward(self, x):
         x1 = self.cv1(x)
-        x2 = self.cv2(x1)
-        x2 = self.bn1(x2)
-        x3 = self.cv3(x1)
-        x3 = self.bn2(x3)
-        x4 = self.cv4(x1 + x2 + x3)
-        if self.add:
-            return x4 + x
-        return x4
+        x2 = self.cv2(x)
+        x3 = torch.cat((x1, x2), 1)
+        out = x + self.cv3(x3) if self.add else self.cv3(x3)
+
+        return out
 
 
-class C3RepTest(C3):
-    # CSP Bottleneck with 3 convolutions
-    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
-        super().__init__(c1, c2, n, shortcut)
+class C3GhostInvertBottleneck(C3):
+    def __init__(self, c1, c2, n=1, shortcut=True, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__(c1, c2, n=n, shortcut=shortcut, e=e)
         c_ = int(c2 * e)  # hidden channels
-        self.m = nn.Sequential(*(RepTest(c_, c_, shortcut, g, e=2.0) for _ in range(n)))
+        self.m = nn.Sequential(*(GhostInvertBottleneck(c_, c_, shortcut) for _ in range(n)))
+
