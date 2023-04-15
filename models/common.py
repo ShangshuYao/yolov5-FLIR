@@ -10,6 +10,7 @@ import warnings
 from collections import OrderedDict, namedtuple
 from copy import copy
 from pathlib import Path
+from torch.nn.parameter import Parameter
 
 import cv2
 import numpy as np
@@ -773,7 +774,9 @@ class Classify(nn.Module):
 
 
 """
-    add some modules
+#########################################################################################################
+                                            add some modules
+#########################################################################################################
 """
 
 
@@ -1375,3 +1378,83 @@ class C3GhostInvertBottleneck(C3):
         c_ = int(c2 * e)  # hidden channels
         self.m = nn.Sequential(*(GhostInvertBottleneck(c_, c_, shortcut) for _ in range(n)))
 
+
+class sa_layer(nn.Module):
+    """Constructs a Channel Spatial Group module.
+    Args:
+        k_size: Adaptive selection of kernel size
+    """
+
+    def __init__(self, c1, channel, groups=32):
+        super(sa_layer, self).__init__()
+        self.groups = groups
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.cweight = Parameter(torch.zeros(1, channel // (2 * groups), 1, 1))
+        self.cbias = Parameter(torch.ones(1, channel // (2 * groups), 1, 1))
+        self.sweight = Parameter(torch.zeros(1, channel // (2 * groups), 1, 1))
+        self.sbias = Parameter(torch.ones(1, channel // (2 * groups), 1, 1))
+
+        self.sigmoid = nn.Sigmoid()
+        self.gn = nn.GroupNorm(channel // (2 * groups), channel // (2 * groups))
+
+    @staticmethod
+    def channel_shuffle(x, groups):
+        b, c, h, w = x.shape
+
+        x = x.reshape(b, groups, -1, h, w)
+        x = x.permute(0, 2, 1, 3, 4)
+
+        # flatten
+        x = x.reshape(b, -1, h, w)
+
+        return x
+
+    def forward(self, x):
+        b, c, h, w = x.shape
+
+        x = x.reshape(b * self.groups, -1, h, w)
+        x_0, x_1 = x.chunk(2, dim=1)
+
+        # channel attention
+        xn = self.avg_pool(x_0)
+        xn = self.cweight * xn + self.cbias
+        xn = x_0 * self.sigmoid(xn)
+
+        # spatial attention
+        xs = self.gn(x_1)
+        xs = self.sweight * xs + self.sbias
+        xs = x_1 * self.sigmoid(xs)
+
+        # concatenate along channel axis
+        out = torch.cat([xn, xs], dim=1)
+        out = out.reshape(b, -1, h, w)
+
+        out = self.channel_shuffle(out, 2)
+        return out
+
+
+class InvertBottleneckCat(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=2):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        c_out = int(c2 * 0.5)
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_, c_, 3, 1, g=g)
+        self.cv3 = Conv(c_, c_out, 1, 1)
+        self.add = shortcut
+        self.cv4 = Conv(c1, c_out, 1, 1)
+
+    def forward(self, x):
+        x1 = self.cv3(self.cv2(self.cv1(x)))
+        x2 = self.cv4(x)
+        out = torch.cat((x1, x2), 1)
+        return out
+
+
+class C3InvertBottleneckCat(C3):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__(c1, c2, n, shortcut)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(InvertBottleneckCat(c_, c_, shortcut, g, e=2.0) for _ in range(n)))

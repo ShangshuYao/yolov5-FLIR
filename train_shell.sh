@@ -30,7 +30,10 @@
 #python ./models/yolo.py --cfg 'C3RepTest-Bifpn-upsample.yaml'
 #python ./models/yolo.py --cfg 'C3GhostInvertBottle-Bifpn-upsample.yaml'
 #python ./models/yolo.py --cfg 'ForSmallC3InvertBottle-Bifpn-upsample.yaml'
-
+#python ./models/yolo.py --cfg 'ForSmallC3InvertBottle-Bifpn-upsample-2.yaml'
+#python ./models/yolo.py --cfg 'ForSmallC3InvertBottle-BifpnCBAM-upsample.yaml'
+#python ./models/yolo.py --cfg 'ForSmallC3InvertBottle-BifpnSA-upsample.yaml'
+#python ./models/yolo.py --cfg 'ForSmallC3InvertBottleCat-Bifpn-upsample.yaml'
 
 
 # 开始训练
@@ -95,4 +98,8 @@
 #python ./train.py --cfg 'C3ELANBlock-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #python ./train.py --cfg 'C3RepTest-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #python ./train.py --cfg 'C3GhostInvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'ForSmallC3InvertBottle-Bifpn-upsample-2.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'ForSmallC3InvertBottle-BifpnCBAM-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'ForSmallC3InvertBottle-BifpnSA-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 python ./train.py --cfg 'ForSmallC3InvertBottle-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+python ./train.py --cfg 'ForSmallC3InvertBottleCat-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
