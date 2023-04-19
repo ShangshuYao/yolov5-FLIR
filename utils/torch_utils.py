@@ -326,6 +326,9 @@ def smart_optimizer(model, name='Adam', lr=0.001, momentum=0.9, decay=1e-5):
         elif hasattr(v, 'weight') and isinstance(v.weight, nn.Parameter):  # weight (with decay)
             g[0].append(v.weight)
 
+        # elif hasattr(v, 'w') and isinstance(v.w, nn.Parameter):
+        #     g[0].append(v.w)
+
     if name == 'Adam':
         optimizer = torch.optim.Adam(g[2], lr=lr, betas=(momentum, 0.999))  # adjust beta1 to momentum
     elif name == 'AdamW':
