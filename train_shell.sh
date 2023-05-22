@@ -108,4 +108,4 @@
 #python ./train.py --cfg 'ForSmallC3InvertBottleCat-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #python ./train.py --cfg 'ForSmallC3InvertBottle-Bifpn-upsample-2.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #python ./train.py --cfg 'ForSmallC3InvertBottle-Bifpn-upsample-3.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
-python ./train.py --cfg 'ForSmallC3InvertBottle-Bifpn2-upsample-2.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+python ./train.py --cfg 'ForSmallC3InvertBottle-Bifpn-upsample-2.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
