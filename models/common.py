@@ -889,7 +889,7 @@ class C3ResCBAM(C3):
 
 class InvertBottleneck(nn.Module):
     # Standard bottleneck
-    def __init__(self, c1, c2, shortcut=True, g=1, e=2):  # ch_in, ch_out, shortcut, groups, expansion
+    def __init__(self, c1, c2, shortcut=True, g=1, e=2.0):  # ch_in, ch_out, shortcut, groups, expansion
         super().__init__()
         c_ = int(c2 * e)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
@@ -1492,3 +1492,114 @@ class BiFPN_Add3(nn.Module):
         # Fast normalized fusion
         x = [weight[0] * x[0], weight[1] * x[1], weight[2] * x[2]]
         return torch.cat(x, self.d)
+
+
+class ResBottleneck(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        self.m = nn.Sequential(*(Bottleneck(c1, c1, shortcut, g, e=1.0) for _ in range(n)))
+
+    def forward(self, x):
+        return self.m(x)
+
+
+def shuffle_chnls(x, groups=2):
+    """Channel Shuffle"""
+
+    bs, chnls, h, w = x.data.size()
+    if chnls % groups:
+        return x
+    chnls_per_group = chnls // groups
+    x = x.view(bs, groups, chnls_per_group, h, w)
+    x = torch.transpose(x, 1, 2).contiguous()
+    x = x.view(bs, -1, h, w)
+    return x
+
+
+class InvertBottleneckShuffle(nn.Module):
+    # channel shuffle
+    def __init__(self, c1, c2, shortcut=True, g=4, e=2.0):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_, c_, 3, 1, g=g)
+        self.cv3 = Conv(c_, c2, 1, 1)
+        self.cv4 = Conv(c1+c2, c2, 1, 1)
+
+    def forward(self, x):
+        x1 = self.cv1(x)
+        x1 = self.cv2(x1)
+        x1 = self.cv3(x1)
+        out = torch.cat((x, x1), 1)
+        out = shuffle_chnls(out, 2)
+        out = self.cv4(out)
+        return out
+
+
+class C3InvertBottleneckShuffle(C3):
+    #
+    def __init__(self, c1, c2, n=1, shortcut=True, g=4, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__(c1, c2, n, shortcut)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(InvertBottleneckShuffle(c_, c_, shortcut, g) for _ in range(n)))
+
+
+class CfBottleneck(nn.Module):
+    """Standard bottleneck."""
+
+    def __init__(self, c1, c2, shortcut=True, g=1, k=(3, 3), e=0.5):  # ch_in, ch_out, shortcut, groups, kernels, expand
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, k[0], 1)
+        self.cv2 = Conv(c_, c2, k[1], 1, g=g)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        """'forward()' applies the YOLOv5 FPN to input data."""
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+
+
+class C2f(nn.Module):
+    """CSP Bottleneck with 2 convolutions."""
+
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        self.c = int(c1 * e)  # hidden channels
+        self.cv1 = Conv((1 + n) * self.c, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.ModuleList(InvertBottleneck(self.c, self.c, shortcut, g, e=2.0) for _ in range(n))
+
+    def forward(self, x):
+        """Forward pass through C2f layer."""
+        x1 = x.split((self.c, self.c), dim=1)
+        y = list()
+        y.append(x1[0])
+        for m in self.m:
+            y.append(m(y[-1]))
+        return self.cv1(shuffle_chnls(torch.cat(y, 1)))
+
+    # def forward_split(self, x):
+    #     """Forward pass using split() instead of chunk()."""
+    #     y = list(self.cv1(x).split((self.c, self.c), 1))
+    #     y.extend(m(y[-1]) for m in self.m)
+    #     return self.cv2(torch.cat(y, 1))
+
+
+class DFL(nn.Module):
+    """
+    Integral module of Distribution Focal Loss (DFL).
+    Proposed in Generalized Focal Loss https://ieeexplore.ieee.org/document/9792391
+    """
+
+    def __init__(self, c1=16):
+        """Initialize a convolutional layer with a given number of input channels."""
+        super().__init__()
+        self.conv = nn.Conv2d(c1, 1, 1, bias=False).requires_grad_(False)
+        x = torch.arange(c1, dtype=torch.float)
+        self.conv.weight.data[:] = nn.Parameter(x.view(1, c1, 1, 1))
+        self.c1 = c1
+
+    def forward(self, x):
+        """Applies a transformer layer on input tensor 'x' and returns a tensor."""
+        b, c, a = x.shape  # batch, channels, anchors
+        return self.conv(x.view(b, 4, self.c1, a).transpose(2, 1).softmax(1)).view(b, 4, a)
+        # return self.conv(x.view(b, self.c1, 4, a).softmax(1)).view(b, 4, a)
