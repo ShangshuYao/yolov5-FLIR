@@ -1492,3 +1492,233 @@ class BiFPN_Add3(nn.Module):
         # Fast normalized fusion
         x = [weight[0] * x[0], weight[1] * x[1], weight[2] * x[2]]
         return torch.cat(x, self.d)
+
+
+# NAM   normalization-based attention module
+class NAM(nn.Module):
+    def __init__(self, channels, t=16):
+        super(NAM, self).__init__()
+        self.channels = channels
+        self.bn2 = nn.BatchNorm2d(self.channels, affine=True)
+
+    def forward(self, x):
+        residual = x
+        x = self.bn2(x)
+        weight_bn = self.bn2.weight.data.abs() / torch.sum(self.bn2.weight.data.abs())
+        x = x.permute(0, 2, 3, 1).contiguous()
+        x = torch.mul(weight_bn, x)
+        x = x.permute(0, 3, 1, 2).contiguous()
+        x = torch.sigmoid(x) * residual  #
+        return x
+
+
+# CCnet 注意力机制
+def INF(B,H,W):
+     return -torch.diag(torch.tensor(float("inf")).repeat(H),0).unsqueeze(0).repeat(B*W,1,1)
+
+
+def BMM(x1, x2):
+    return torch.bmm(x1,x2).cuda()
+
+
+
+class CrissCrossAttention(nn.Module):
+    """ Criss-Cross Attention Module"""
+    def __init__(self, in_dim):
+        super(CrissCrossAttention,self).__init__()
+        self.query_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim//8, kernel_size=1)
+        self.key_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim//8, kernel_size=1)
+        self.value_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim, kernel_size=1)
+        self.softmax = nn.Softmax(dim=3)
+        self.INF = INF
+        self.gamma = nn.Parameter(torch.zeros(1))
+        self.bmm = BMM
+
+    def forward(self, x):
+        m_batchsize, _, height, width = x.size()
+        proj_query = self.query_conv(x)
+        proj_query_H = proj_query.permute(0,3,1,2).contiguous().view(m_batchsize*width,-1,height).permute(0, 2, 1)
+        proj_query_W = proj_query.permute(0,2,1,3).contiguous().view(m_batchsize*height,-1,width).permute(0, 2, 1)
+        proj_key = self.key_conv(x)
+        proj_key_H = proj_key.permute(0,3,1,2).contiguous().view(m_batchsize*width,-1,height)
+        proj_key_W = proj_key.permute(0,2,1,3).contiguous().view(m_batchsize*height,-1,width)
+        proj_value = self.value_conv(x)
+        proj_value_H = proj_value.permute(0,3,1,2).contiguous().view(m_batchsize*width,-1,height)
+        proj_value_W = proj_value.permute(0,2,1,3).contiguous().view(m_batchsize*height,-1,width)
+        energy_H = (self.bmm(proj_query_H, proj_key_H) +
+                    self.INF(m_batchsize, height, width)).view(m_batchsize,width,height,height).permute(0,2,1,3)
+        energy_W = self.bmm(proj_query_W, proj_key_W).view(m_batchsize,height,width,width)
+        concate = self.softmax(torch.cat([energy_H, energy_W], 3))
+
+        att_H = concate[:,:,:,0:height].permute(0,2,1,3).contiguous().view(m_batchsize*width,height,height)
+        #print(concate)
+        #print(att_H)
+        att_W = concate[:,:,:,height:height+width].contiguous().view(m_batchsize*height,width,width)
+        out_H = self.bmm(proj_value_H, att_H.permute(0, 2, 1)).view(m_batchsize,width,-1,height).permute(0,2,3,1)
+        out_W = self.bmm(proj_value_W, att_W.permute(0, 2, 1)).view(m_batchsize,height,-1,width).permute(0,2,1,3)
+        #print(out_H.size(),out_W.size())
+        result = self.gamma*(out_H + out_W) + x
+        return result
+
+
+
+# C2fshuffle  YOLOV8
+def shuffle_chnls(x, groups=2):
+    """Channel Shuffle"""
+
+    bs, chnls, h, w = x.data.size()
+    if chnls % groups:
+        return x
+    chnls_per_group = chnls // groups
+    x = x.view(bs, groups, chnls_per_group, h, w)
+    x = torch.transpose(x, 1, 2).contiguous()
+    x = x.view(bs, -1, h, w)
+    return x
+
+
+class C2fshuffle(nn.Module):
+    """CSP Bottleneck with 2 convolutions."""
+
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        self.c = int(c1 * e)  # hidden channels
+        self.cv1 = Conv((1 + n) * self.c, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.ModuleList(InvertBottleneck(self.c, self.c, shortcut, g, e=2.0) for _ in range(n))
+
+    def forward(self, x):
+        """Forward pass through C2f layer."""
+        x1 = x.split((self.c, self.c), dim=1)
+        y = list()
+        y.append(x1[0])
+        for m in self.m:
+            y.append(m(y[-1]))
+        return self.cv1(shuffle_chnls(torch.cat(y, 1)))
+
+    # def forward_split(self, x):
+    #     """Forward pass using split() instead of chunk()."""
+    #     y = list(self.cv1(x).split((self.c, self.c), 1))
+    #     y.extend(m(y[-1]) for m in self.m)
+    #     return self.cv2(torch.cat(y, 1))
+
+
+# C2f  YOLOV8
+class C2fBottleneck(Bottleneck):
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):
+        super(C2fBottleneck, self).__init__(c1, c2)
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 3, 1)
+        self.cv2 = Conv(c_, c2, 3, 1, g=g)
+        self.add = shortcut and c1 == c2
+
+
+class C2f(nn.Module):
+    """CSP Bottleneck with 2 convolutions."""
+
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        self.c = int(c1 * e)  # hidden channels
+        self.cv1 = Conv(c1, 2 * self.c, 1, 1)
+        self.cv2 = Conv((1 + n) * self.c, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.ModuleList(C2fBottleneck(self.c, self.c, shortcut, g, e=1.0) for _ in range(n))
+
+    def forward(self, x):
+        """Forward pass through C2f layer."""
+        x1 = x.split((self.c, self.c), dim=1)
+        y = list()
+        y.append(x1[0])
+        for m in self.m:
+            y.append(m(y[-1]))
+        return self.cv2(torch.cat(y, 1))
+
+    # def forward_split(self, x):
+    #     """Forward pass using split() instead of chunk()."""
+    #     y = list(self.cv1(x).split((self.c, self.c), 1))
+    #     y.extend(m(y[-1]) for m in self.m)
+    #     return self.cv2(torch.cat(y, 1))
+
+
+# C2f带NAM注意力机制
+class C2fNAM(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        self.c = int(c1 * e)  # hidden channels
+        self.cv1 = Conv(c1, 2 * self.c, 1, 1)
+        self.cv2 = Conv((1 + n) * self.c, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.ModuleList(C2fBottleneck(self.c, self.c, shortcut, g, e=1.0) for _ in range(n))
+        self.nam = NAM(c2)
+
+    def forward(self, x):
+        """Forward pass through C2f layer."""
+        x1 = x.split((self.c, self.c), dim=1)
+        y = list()
+        y.append(x1[0])
+        for m in self.m:
+            y.append(m(y[-1]))
+        out = self.cv2(torch.cat(y, 1))
+        return self.nam(out)
+
+
+# C2f带CCnet注意力机制
+class C2fCCnet(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        self.c = int(c1 * e)  # hidden channels
+        self.cv1 = Conv(c1, 2 * self.c, 1, 1)
+        self.cv2 = Conv((1 + n) * self.c, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.ModuleList(C2fBottleneck(self.c, self.c, shortcut, g, e=1.0) for _ in range(n))
+        self.CC = CrissCrossAttention(c2)
+
+    def forward(self, x):
+        """Forward pass through C2f layer."""
+        x1 = x.split((self.c, self.c), dim=1)
+        y = list()
+        y.append(x1[0])
+        for m in self.m:
+            y.append(m(y[-1]))
+        out = self.cv2(torch.cat(y, 1))
+        return self.CC(out)
+
+
+class SPPFCSPC(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5, k=5):
+        super(SPPFCSPC, self).__init__()
+        c_ = int(2 * c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.cv3 = Conv(c_, c_, 3, 1)
+        self.cv4 = Conv(c_, c_, 1, 1)
+        self.m = nn.MaxPool2d(kernel_size=k, stride=1, padding=k // 2)
+        self.cv5 = Conv(4 * c_, c_, 1, 1)
+        self.cv6 = Conv(c_, c_, 3, 1)
+        self.cv7 = Conv(2 * c_, c2, 1, 1)
+
+    def forward(self, x):
+        x1 = self.cv4(self.cv3(self.cv1(x)))
+        x2 = self.m(x1)
+        x3 = self.m(x2)
+        y1 = self.cv6(self.cv5(torch.cat((x1, x2, x3, self.m(x3)), 1)))
+        y2 = self.cv2(x)
+        return self.cv7(torch.cat((y1, y2), dim=1))
+
+
+class InvertBottleneckNAM(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=2.0):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_, c_, 3, 1, g=g)
+        self.cv3 = Conv(c_, c2, 1, 1)
+        self.add = shortcut and c1 == c2
+        self.nam = NAM(c2)
+
+    def forward(self, x):
+        return x + self.nam(self.cv3(self.cv2(self.cv1(x))) if self.add else self.cv3(self.cv2(self.cv1(x))))
+
+
+class C3InvertBottleneckNAM(C3):
+    # CSP Bottleneck with 3 convolutions
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__(c1, c2, n, shortcut)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(InvertBottleneckNAM(c_, c_, shortcut, g, e=2.0) for _ in range(n)))
