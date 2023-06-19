@@ -1722,3 +1722,47 @@ class C3InvertBottleneckNAM(C3):
         super().__init__(c1, c2, n, shortcut)
         c_ = int(c2 * e)  # hidden channels
         self.m = nn.Sequential(*(InvertBottleneckNAM(c_, c_, shortcut, g, e=2.0) for _ in range(n)))
+
+
+class GhostShuffleInvertBottleneck(nn.Module):
+    def __init__(self, c1, c2, shortcut=True):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        self.cv1 = Conv(c1, c1, 3, 1)
+        self.cv2 = Conv(c1, c1, 3, 1, g=c1)
+        self.cv3 = Conv(2*c1, c2, 1, 1)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        x1 = self.cv1(x)
+        x2 = self.cv2(x)
+        x2 = shuffle_chnls(x2, 2)
+        x3 = torch.cat((x1, x2), 1)
+        out = x + self.cv3(x3) if self.add else self.cv3(x3)
+
+        return out
+
+
+class C3GhostShuffleInvertBottleneck(C3):
+    def __init__(self, c1, c2, n=1, shortcut=True, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__(c1, c2, n=n, shortcut=shortcut, e=e)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(GhostShuffleInvertBottleneck(c_, c_, shortcut) for _ in range(n)))
+
+
+class SELayer(nn.Module):
+    # SE module
+    def __init__(self, channel, reduction=16):
+        super(SELayer, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channel, channel // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel // reduction, channel, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y.expand_as(x)

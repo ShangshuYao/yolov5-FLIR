@@ -292,7 +292,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                  C3ResCBAM, C3InvertBottleneck, C3ConvNext, C3DWInvertBottleneck, ConvSPPF, UpSample,
                  C3NoActInvertBottleneck, C3PreActInvertBottleneck, CoT3InvertBottleneck, C3PConvInvertBottleneck,
                  ELANBlock, RepConv, MP, C3GhostInvertBottleneck, sa_layer, C3InvertBottleneckCat, C2f, C2fNAM,
-                 C2fCCnet, SPPFCSPC, C3InvertBottleneckNAM):
+                 C2fCCnet, SPPFCSPC, C3InvertBottleneckNAM, C3GhostShuffleInvertBottleneck):
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -301,7 +301,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             if m in [BottleneckCSP, C3, C3TR, C3Ghost, C3x, C3ResCBAM, C3InvertBottleneck, C3ConvNext,
                      C3DWInvertBottleneck, C3NoActInvertBottleneck, C3PreActInvertBottleneck,
                      CoT3InvertBottleneck, C3PConvInvertBottleneck, C3GhostInvertBottleneck, C3InvertBottleneckCat,
-                     C2f, C2fNAM, C2fCCnet, C3InvertBottleneckNAM]:
+                     C2f, C2fNAM, C2fCCnet, C3InvertBottleneckNAM, C3GhostShuffleInvertBottleneck]:
                 args.insert(2, n)  # number of repeats
                 n = 1
         elif m is nn.BatchNorm2d:
@@ -316,6 +316,10 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             c2 = ch[f] * args[0] ** 2
         elif m is Expand:
             c2 = ch[f] // args[0] ** 2
+        elif m is SELayer:
+            channel, re = args[0], args[1]
+            channel = make_divisible(channel * gw, 8) if channel != no else channel
+            args = [channel, re]
         else:
             c2 = ch[f]
 
@@ -334,7 +338,7 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='C3InvertBottleNAMforsmall-Bifpn-upsample.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default='C3GhostforsmallSPPFCSPC-Bifpn-upsample-2.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')

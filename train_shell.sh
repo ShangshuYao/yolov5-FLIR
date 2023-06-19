@@ -124,6 +124,13 @@
 #python ./train.py --cfg 'C3InvertBottle-Bifpn-upsample.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #python ./train.py --cfg 'C3InvertBottleforsmall-Bifpn-upsample.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #python ./train.py --cfg 'C3forsmallSPPFCSPC-Bifpn-upsample.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
-python ./train.py --cfg 'C3InvertBottleNAMforsmall-Bifpn-upsample.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'C3InvertBottleNAMforsmall-Bifpn-upsample.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'InvertNAMSPPFCSPCforsmall-Bifpn-upsample.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'C3GhostforsmallSPPFCSPC-Bifpn-upsample.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'C3GhostShuffleforsmallSPPFCSPC-Bifpn-upsample.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'BottleneckSPPFCSPC-Bifpn-upsample.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'yolov5-FIRI.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+python ./train.py --cfg 'C3GhostforsmallSPPFCSPC-Bifpn-upsample-2.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+python ./train.py --cfg 'C3GhostCBAMSPPFCSPC-Bifpn-upsample.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 
 
