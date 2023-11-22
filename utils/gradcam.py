@@ -115,17 +115,37 @@ class yolov5_heatmap:
 
             # add heatmap and box to image
             cam_image = show_cam_on_image(img.copy(), saliency_map, use_rgb=True)
-            cam_image = self.draw_detections(post_boxes[i], self.colors[int(post_result[i, 1:].argmax())],
-                                             f'{self.model_names[int(post_result[i, 1:].argmax())]} {post_result[i][0]:.2f}',
-                                             cam_image)
+            # cam_image = self.draw_detections(post_boxes[i], self.colors[int(post_result[i, 1:].argmax())],
+            #                                  f'{self.model_names[int(post_result[i, 1:].argmax())]} {post_result[i][0]:.2f}',
+            #                                  cam_image)
             cam_image = Image.fromarray(cam_image)
             cam_image.save(f'{save_path}/{i}.png')
 
 
 def get_params():
     params = {
-        'weight': 'D:\\StudyFile\\Yao\\yolov5-FLIR\\yolov5s.pt',
-        'cfg': r'D:\StudyFile\Yao\yolov5-FLIR\models\yolov5s.yaml',
+        # YOLO-TIR
+        'weight': 'D:\\StudyFile\\Yao\\yolov5-FLIR\\runs\\train\\exp125\\weights\\best.pt',
+        # YOLOV5s
+        # 'weight': 'D:\\StudyFile\\Yao\\yolov5-FLIR\\runs\\train\\exp99\\weights\\best.pt',
+        # YOLOV5m
+        # 'weight': 'D:\\StudyFile\\Yao\\yolov5-FLIR\\runs\\train\\exp107\\weights\\best.pt',
+        # YOLO-FIRI
+        # 'weight': 'D:\\StudyFile\\Yao\\yolov5-FLIR\\runs\\train\\exp119\\weights\\best.pt',
+        # YOLOV3
+        # 'weight': 'D:\\StudyFile\\Yao\\yolov5-FLIR\\runs\\train\\exp103\\weights\\best.pt',
+
+
+        # YOLO-TIR
+        'cfg': r'D:\StudyFile\Yao\yolov5-FLIR\models\diy_model\C3GhostforsmallSPPFCSPC-Bifpn-upsample.yaml',
+        # YOLOV5s
+        # 'cfg': r'D:\StudyFile\Yao\yolov5-FLIR\models\diy_model\yolov5s-baseline.yaml',
+        # YOLOV5m
+        # 'cfg': r'D:\StudyFile\Yao\yolov5-FLIR\models\diy_model\yolov5m-baseline.yaml',
+        # YOLO-FIRI
+        # 'cfg': r'D:\StudyFile\Yao\yolov5-FLIR\models\diy_model\yolov5-FIRI.yaml',
+        # YOLOV3
+        # 'cfg': r'D:\StudyFile\Yao\yolov5-FLIR\models\hub\yolov3.yaml',
         'device': 'cuda:0',
         'method': 'GradCAM',  # GradCAMPlusPlus, GradCAM, XGradCAM
         'layer': 'model.model[-2]',
@@ -138,6 +158,11 @@ def get_params():
 
 if __name__ == '__main__':
     model = yolov5_heatmap(**get_params())
-    model(r'C:\Users\Htu\Desktop\2.jpg', r'C:\Users\Htu\Desktop\result')
+
+    model(r'C:\Users\Htu\Desktop\video-57kWWRyeqqHs3Byei-frame-003704-hnZEGkFcsDGbQ4ZK2.jpg', r'C:\Users\Htu\Desktop\result\YOLO-TIR\video-57kWWRyeqqHs3Byei-frame-003704-hnZEGkFcsDGbQ4ZK2')
+    # model(r'C:\Users\Htu\Desktop\video-zp8ed5vPKfAJ2fKWh-frame-006344-Nz9o8Kg86cij7hLtA.jpg', r'C:\Users\Htu\Desktop\result\YOLOV3\video-zp8ed5vPKfAJ2fKWh-frame-006344-Nz9o8Kg86cij7hLtA')
+    # model(r'C:\Users\Htu\Desktop\video-57kWWRyeqqHs3Byei-frame-008515-3QTbXjfmsfueXdv7R.jpg', r'C:\Users\Htu\Desktop\result\YOLOV3\video-57kWWRyeqqHs3Byei-frame-008515-3QTbXjfmsfueXdv7R')
+    # model(r'C:\Users\Htu\Desktop\AC062801.jpg', r'C:\Users\Htu\Desktop\result\YOLOV3\AC062801')
+    # model(r'C:\Users\Htu\Desktop\AA062801.jpg', r'C:\Users\Htu\Desktop\result\YOLOV3\AA062801')
 
 

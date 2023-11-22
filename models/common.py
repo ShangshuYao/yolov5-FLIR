@@ -1359,7 +1359,7 @@ class GhostInvertBottleneck(nn.Module):
     def __init__(self, c1, c2, shortcut=True):  # ch_in, ch_out, shortcut, groups, expansion
         super().__init__()
         self.cv1 = Conv(c1, c1, 3, 1)
-        self.cv2 = Conv(c1, c1, 3, 1, g=c1)
+        self.cv2 = Conv(c1, c1, 3, 1)
         self.cv3 = Conv(2*c1, c2, 1, 1)
         self.add = shortcut and c1 == c2
 
@@ -1378,6 +1378,30 @@ class C3GhostInvertBottleneck(C3):
         c_ = int(c2 * e)  # hidden channels
         self.m = nn.Sequential(*(GhostInvertBottleneck(c_, c_, shortcut) for _ in range(n)))
 
+
+# 使用不同大小的卷积核
+class GhostInvertBottleneck2(nn.Module):
+    def __init__(self, c1, c2, shortcut=True):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        self.cv1 = Conv(c1, c1, 3, 1)
+        self.cv2 = Conv(c1, c1, 5, 1)
+        self.cv3 = Conv(2*c1, c2, 1, 1)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        x1 = self.cv1(x)
+        x2 = self.cv2(x)
+        x3 = torch.cat((x1, x2), 1)
+        out = x + self.cv3(x3) if self.add else self.cv3(x3)
+
+        return out
+
+
+class C3GhostInvertBottleneck2(C3):
+    def __init__(self, c1, c2, n=1, shortcut=True, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__(c1, c2, n=n, shortcut=shortcut, e=e)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(GhostInvertBottleneck2(c_, c_, shortcut) for _ in range(n)))
 
 class sa_layer(nn.Module):
     """Constructs a Channel Spatial Group module.
@@ -1766,3 +1790,25 @@ class SELayer(nn.Module):
         y = self.avg_pool(x).view(b, c)
         y = self.fc(y).view(b, c, 1, 1)
         return x * y.expand_as(x)
+
+
+class BottleneckNew(nn.Module):
+    def __init__(self, c1, c2, shortcut=True):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        self.cv1 = Conv(c1, c1, 3, 1)
+        self.cv2 = Conv(c1, c1, 3, 1)
+        self.cv3 = Conv(c1, c2, 1, 1)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        x1 = self.cv1(x)
+        x2 = self.cv2(x1)
+        out = x + self.cv3(x2) if self.add else self.cv3(x2)
+        return out
+
+
+class C3BottleneckNew(C3):
+    def __init__(self, c1, c2, n=1, shortcut=True, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__(c1, c2, n=n, shortcut=shortcut, e=e)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(BottleneckNew(c_, c_, shortcut) for _ in range(n)))

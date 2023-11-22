@@ -168,7 +168,7 @@ class DetectionModel(BaseModel):
             self.yaml['anchors'] = round(anchors)  # override yaml value
         self.model, self.save = parse_model(deepcopy(self.yaml), ch=[ch])  # model, savelist
         self.names = [str(i) for i in range(self.yaml['nc'])]  # default names
-        self.inplace = self.yaml.get('inplace', True)
+        self.inplace = self.yaml.get('inplace', False)
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
@@ -292,7 +292,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                  C3ResCBAM, C3InvertBottleneck, C3ConvNext, C3DWInvertBottleneck, ConvSPPF, UpSample,
                  C3NoActInvertBottleneck, C3PreActInvertBottleneck, CoT3InvertBottleneck, C3PConvInvertBottleneck,
                  ELANBlock, RepConv, MP, C3GhostInvertBottleneck, sa_layer, C3InvertBottleneckCat, C2f, C2fNAM,
-                 C2fCCnet, SPPFCSPC, C3InvertBottleneckNAM, C3GhostShuffleInvertBottleneck):
+                 C2fCCnet, SPPFCSPC, C3InvertBottleneckNAM, C3GhostShuffleInvertBottleneck, C3BottleneckNew,
+                 C3GhostInvertBottleneck2):
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -301,7 +302,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
             if m in [BottleneckCSP, C3, C3TR, C3Ghost, C3x, C3ResCBAM, C3InvertBottleneck, C3ConvNext,
                      C3DWInvertBottleneck, C3NoActInvertBottleneck, C3PreActInvertBottleneck,
                      CoT3InvertBottleneck, C3PConvInvertBottleneck, C3GhostInvertBottleneck, C3InvertBottleneckCat,
-                     C2f, C2fNAM, C2fCCnet, C3InvertBottleneckNAM, C3GhostShuffleInvertBottleneck]:
+                     C2f, C2fNAM, C2fCCnet, C3InvertBottleneckNAM, C3GhostShuffleInvertBottleneck, C3BottleneckNew,
+                     C3GhostInvertBottleneck2]:
                 args.insert(2, n)  # number of repeats
                 n = 1
         elif m is nn.BatchNorm2d:

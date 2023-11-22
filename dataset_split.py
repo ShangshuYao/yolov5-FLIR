@@ -147,7 +147,7 @@ class VideoSplit:
 
 
 if __name__ == "__main__":
-    source_path = r'D:\dataset\under_water\video'
-    result_path = r'D:\dataset\under_water\result'
+    source_path = r'C:\Users\Htu\Desktop\avi'
+    result_path = r'C:\Users\Htu\Desktop\image'
     tst = VideoSplit(source_path, result_path)
     tst.split_video()
