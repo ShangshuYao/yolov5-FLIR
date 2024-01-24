@@ -138,7 +138,7 @@ class BaseModel(nn.Module):
         # Apply to(), cpu(), cuda(), half() to model tensors that are not parameters or registered buffers
         self = super()._apply(fn)
         m = self.model[-1]  # Detect()
-        if isinstance(m, Detect):
+        if isinstance(m, (Detect, Decoupled_Detect)):
             m.stride = fn(m.stride)
             m.grid = list(map(fn, m.grid))
             if isinstance(m.anchor_grid, list):
@@ -172,14 +172,19 @@ class DetectionModel(BaseModel):
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
-        if isinstance(m, Detect):
+        if isinstance(m, (Detect, Decoupled_Detect)):
             s = 256  # 2x min stride
             m.inplace = self.inplace
             m.stride = torch.tensor([s / x.shape[-2] for x in self.forward(torch.zeros(1, ch, s, s))])  # forward
             check_anchor_order(m)  # must be in pixel-space (not grid-space)
             m.anchors /= m.stride.view(-1, 1, 1)
             self.stride = m.stride
-            self._initialize_biases()  # only run once
+            # self._initialize_biases()  # only run once
+            try:
+                self._initialize_biases()  # only run once
+                LOGGER.info('initialize_biases done')
+            except:
+                LOGGER.info('decoupled no biase ')
 
         # Init weights, biases
         initialize_weights(self)
@@ -287,13 +292,14 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                 args[j] = eval(a) if isinstance(a, str) else a  # eval strings
 
         n = n_ = max(round(n * gd), 1) if n > 1 else n  # depth gain
-        if m in (Conv, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
+        if m in (Conv, ConvLeaky, GhostConv, Bottleneck, GhostBottleneck, SPP, SPPF, DWConv, MixConv2d, Focus, CrossConv,
                  BottleneckCSP, C3, C3TR, C3SPP, C3Ghost, nn.ConvTranspose2d, DWConvTranspose2d, C3x, CBAM, ResCBAM,
                  C3ResCBAM, C3InvertBottleneck, C3ConvNext, C3DWInvertBottleneck, ConvSPPF, UpSample,
                  C3NoActInvertBottleneck, C3PreActInvertBottleneck, CoT3InvertBottleneck, C3PConvInvertBottleneck,
                  ELANBlock, RepConv, MP, C3GhostInvertBottleneck, sa_layer, C3InvertBottleneckCat, C2f, C2fNAM,
                  C2fCCnet, SPPFCSPC, C3InvertBottleneckNAM, C3GhostShuffleInvertBottleneck, C3BottleneckNew,
-                 C3GhostInvertBottleneck2):
+                 C3GhostInvertBottleneck2, TransformerBlock, BottleneckLeaky, ShuffleBottle, ShuffleGhostBottleNeck,
+                 DownSample, DownSampleShuffle, ConvDownSample, ShuffleBottleC3):
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -303,14 +309,14 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                      C3DWInvertBottleneck, C3NoActInvertBottleneck, C3PreActInvertBottleneck,
                      CoT3InvertBottleneck, C3PConvInvertBottleneck, C3GhostInvertBottleneck, C3InvertBottleneckCat,
                      C2f, C2fNAM, C2fCCnet, C3InvertBottleneckNAM, C3GhostShuffleInvertBottleneck, C3BottleneckNew,
-                     C3GhostInvertBottleneck2]:
+                     C3GhostInvertBottleneck2, ShuffleBottle, ShuffleGhostBottleNeck, ShuffleBottleC3]:
                 args.insert(2, n)  # number of repeats
                 n = 1
         elif m is nn.BatchNorm2d:
             args = [ch[f]]
         elif m in [Concat, BiFPN_Add2, BiFPN_Add3]:
             c2 = sum(ch[x] for x in f)
-        elif m is Detect:
+        elif m in (Detect, Decoupled_Detect):
             args.append([ch[x] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
@@ -340,9 +346,9 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cfg', type=str, default='C3GhostforsmallSPPFCSPC-Bifpn-upsample-2.yaml', help='model.yaml')
+    parser.add_argument('--cfg', type=str, default='ShuffleBottleSPPFCSPC-Bifpn-upsample-DHead2.yaml', help='model.yaml')
     parser.add_argument('--batch-size', type=int, default=1, help='total batch size for all GPUs')
-    parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
+    parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--profile', action='store_true', help='profile model speed')
     parser.add_argument('--line-profile', action='store_true', help='profile model speed layer by layer')
     parser.add_argument('--test', action='store_true', help='test all yolo*.yaml')

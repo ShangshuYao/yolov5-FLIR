@@ -220,7 +220,7 @@ class ConfusionMatrix:
             print(' '.join(map(str, self.matrix[i])))
 
 
-def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, SIoU=False, eps=1e-7, alpha=1):
+def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, SIoU=False, EIoU=False, eps=1e-7, alpha=1):
     # Returns Intersection over Union (IoU) of box1(1,4) to box2(n,4)
 
     # Get the coordinates of bounding boxes
@@ -245,10 +245,10 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, SIoU=Fal
     # IoU
     # iou = inter / union
     iou = torch.pow(inter / (union + eps), alpha)  # alpha iou
-    if CIoU or DIoU or GIoU or SIoU:
+    if CIoU or DIoU or GIoU or SIoU or EIoU:
         cw = torch.max(b1_x2, b2_x2) - torch.min(b1_x1, b2_x1)  # convex (smallest enclosing box) width
         ch = torch.max(b1_y2, b2_y2) - torch.min(b1_y1, b2_y1)  # convex height
-        if CIoU or DIoU or SIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
+        if CIoU or DIoU or SIoU or EIoU:  # Distance or Complete IoU https://arxiv.org/abs/1911.08287v1
             c2 = (cw ** 2 + ch ** 2) ** alpha + eps  # convex diagonal squared
             rho2 = (((b2_x1 + b2_x2 - b1_x1 - b1_x2) ** 2 + (b2_y1 + b2_y2 - b1_y1 - b1_y2) ** 2) / 4) ** alpha  # center dist ** 2
             if CIoU:  # https://github.com/Zzh-tju/DIoU-SSD-pytorch/blob/master/utils/box/box_utils.py#L47
@@ -256,6 +256,12 @@ def bbox_iou(box1, box2, xywh=True, GIoU=False, DIoU=False, CIoU=False, SIoU=Fal
                 with torch.no_grad():
                     alpha_ciou = v / (v - iou + (1 + eps))
                 return iou - (rho2 / c2 + torch.pow(v * alpha_ciou + eps, alpha))  # CIoU
+            elif EIoU:
+                rho_w2 = ((b2_x2 - b2_x1) - (b1_x2 - b1_x1)) ** 2
+                rho_h2 = ((b2_y2 - b2_y1) - (b1_y2 - b1_y1)) ** 2
+                cw2 = cw ** 2 + eps
+                ch2 = ch ** 2 + eps
+                return iou - (rho2 / c2 + rho_w2 / cw2 + rho_h2 / ch2)
             elif SIoU:
                 # SIoU Loss https://arxiv.org/pdf/2205.12740.pdf
                 s_cw = (b2_x1 + b2_x2 - b1_x1 - b1_x2) * 0.5 + eps

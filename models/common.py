@@ -42,7 +42,24 @@ class Conv(nn.Module):
         super().__init__()
         self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
         self.bn = nn.BatchNorm2d(c2)
-        self.act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        self.act = nn.ReLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+
+    def forward(self, x):
+        return self.act(self.bn(self.conv(x)))
+
+    def forward_fuse(self, x):
+        return self.act(self.conv(x))
+
+"""
+使用LeakyReLU作为激活函数
+"""
+class ConvLeaky(nn.Module):
+    # Standard convolution
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = nn.LeakyReLU(0.1) if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
 
     def forward(self, x):
         return self.act(self.bn(self.conv(x)))
@@ -106,6 +123,19 @@ class Bottleneck(nn.Module):
         c_ = int(c2 * e)  # hidden channels
         self.cv1 = Conv(c1, c_, 1, 1)
         self.cv2 = Conv(c_, c2, 3, 1, g=g)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+
+
+class BottleneckLeaky(nn.Module):
+    # Standard bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = ConvLeaky(c1, c_, 1, 1)
+        self.cv2 = ConvLeaky(c_, c2, 3, 1, g=g)
         self.add = shortcut and c1 == c2
 
     def forward(self, x):
@@ -265,6 +295,22 @@ class GhostBottleneck(nn.Module):
     def forward(self, x):
         return self.conv(x) + self.shortcut(x)
 
+class GhostBottleneckLeaky(nn.Module):
+    # Ghost Bottleneck https://github.com/huawei-noah/ghostnet
+    def __init__(self, c1, c2, k=3, s=1):  # ch_in, ch_out, kernel, stride
+        super().__init__()
+        c_ = c2 // 2
+        self.conv = nn.Sequential(
+            ConvLeaky(c1, c_, k, s, None),
+            ConvLeaky(c_, c_, 5, 1, None, c_),
+            GhostConv(c1, c_, 1, 1),  # pw
+            DWConv(c_, c_, k, s, act=False) if s == 2 else nn.Identity(),  # dw
+            GhostConv(c_, c2, 1, 1, act=False))  # pw-linear
+        self.shortcut = nn.Sequential(DWConv(c1, c1, k, s, act=False), Conv(c1, c2, 1, 1,
+                                                                            act=False)) if s == 2 else nn.Identity()
+
+    def forward(self, x):
+        return self.conv(x) + self.shortcut(x)
 
 class Contract(nn.Module):
     # Contract width-height into channels, i.e. x(1,64,80,80) to x(1,256,40,40)
@@ -1775,7 +1821,7 @@ class C3GhostShuffleInvertBottleneck(C3):
 
 class SELayer(nn.Module):
     # SE module
-    def __init__(self, channel, reduction=16):
+    def __init__(self, channel, reduction=4):
         super(SELayer, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Sequential(
@@ -1812,3 +1858,292 @@ class C3BottleneckNew(C3):
         super().__init__(c1, c2, n=n, shortcut=shortcut, e=e)
         c_ = int(c2 * e)  # hidden channels
         self.m = nn.Sequential(*(BottleneckNew(c_, c_, shortcut) for _ in range(n)))
+
+
+class UnetDoubleConv(nn.Module):
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):  # ch_in, ch_out, kernel, stride, padding, groups
+        super().__init__()
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, bias=False)
+        self.bn = nn.BatchNorm2d(c2)
+        self.act = nn.ReLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+
+    def forward(self, x):
+        return self.act(self.bn(self.conv(x)))
+
+    def forward_fuse(self, x):
+        return self.act(self.conv(x))
+
+
+"""
+yoloV7 - tiny
+"""
+class MP2(nn.Module):
+    def __init__(self, k=2):
+        super(MP2, self).__init__()
+        self.m = nn.MaxPool2d(kernel_size=k, stride=k)
+
+    def forward(self, x):
+        return self.m(x)
+
+
+# i+2p-k
+class SP(nn.Module):
+    def __init__(self, k=3, s=1):
+        super(SP, self).__init__()
+        self.m = nn.MaxPool2d(kernel_size=k, stride=s, padding=autopad(k, None))
+
+    def forward(self, x):
+        ret = self.m(x)
+        return ret
+
+
+class DownSample(nn.Module):
+    def __init__(self, c1, c2, k=3, s=1,):
+        super(DownSample, self).__init__()
+        self.m = nn.MaxPool2d(kernel_size=k, stride=s, ceil_mode=True)
+        self.conv1 = Conv(c1, c2, 1, 1)
+        self.c = False
+        if c1 != c2:
+            self.c = True
+
+    def forward(self, x):
+        ret = self.m(x)
+        if self.c:
+            ret = self.conv1(ret)
+        return ret
+
+
+class DownSampleShuffle(nn.Module):
+    def __init__(self, c1, c2, k=3, s=1, e=0.5):
+        super(DownSampleShuffle, self).__init__()
+        c_ = int(c1 * e)  # hidden channels
+        self.down = nn.MaxPool2d(kernel_size=k, stride=s, ceil_mode=True)
+        self.c = c_
+        self.cv1 = Conv(c1, c2, 1, 1)
+        self.cv2 = Conv(c_, c_, 3, 2)
+        self.s = False
+        if c1 != c2:
+            self.s = True
+
+    def forward(self, x):
+        x1, x2 = x.split(self.c, dim=1)
+        x3 = self.down(x1)
+        x4 = self.cv2(x2)
+        x5 = torch.cat((x3, x4), dim=1)
+        ret = shuffle_chnls(x5, int(self.c // 2))
+        if self.s:
+            ret = self.cv1(ret)
+        return ret
+
+
+class ConvDownSample(nn.Module):
+    def __init__(self, c1, c2, k=3, s=1,):
+        super(ConvDownSample, self).__init__()
+        self.conv1 = Conv(c1, c2, 1, 1)
+        self.conv2 = Conv(c1, c1, k, s)
+        self.c = False
+        if c1 != c2:
+            self.c = True
+
+    def forward(self, x):
+        ret = self.conv2(x)
+        if self.c:
+            ret = self.conv1(ret)
+        return ret
+
+
+class ShuffleBottleneck(nn.Module):
+    # bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c1 * e)  # hidden channels
+        self.c = c_
+        self.cv1 = nn.Conv2d(c_, c_, 3, 1, autopad(3), groups=c_, bias=False)  # DW卷积
+        self.bn = nn.BatchNorm2d(c_)
+        self.cv2 = Conv(c_, c_, 1, 1)
+        self.add = shortcut
+
+    def forward(self, x):
+        x1, x2 = x.split(self.c, dim=1)
+        x3 = torch.cat((x1, self.cv2(self.bn(self.cv1(x2)))), dim=1)
+        x4 = shuffle_chnls(x3, int(self.c//2))
+        return x4
+
+
+class ShuffleBottle(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=True, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        self.cv1 = Conv(c1, c2, 1, 1)
+        self.cv2 = Conv(c2, c2, 3, 1)
+        self.m = nn.Sequential(*(ShuffleBottleneck(c1, c1, shortcut) for _ in range(n)))
+        self.add = shortcut
+
+    def forward(self, x):
+        x1 = self.m(x)
+        if self.add:
+            x1 = x1 + x
+        return self.cv2(self.cv1(x1))
+
+
+class ResShuffleBottleneck(nn.Module):
+    # bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        self.m = ShuffleBottleneck(c1, c1, shortcut)
+        self.add = shortcut
+
+    def forward(self, x):
+        x1 = self.m(x)
+        out = x1 + x if self.add else x
+        return out
+
+
+class ShuffleBottleC3(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=True, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c1 * e)  # hidden channels
+        self.c = c_
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c2, 1, 1)
+        self.m = nn.Sequential(*(ResShuffleBottleneck(c_, c_, shortcut) for _ in range(n)))
+
+    def forward(self, x):
+        x1 = self.cv1(x)
+        x = self.m(x1)
+        x = torch.cat((x1, x), dim=1)
+        out = self.cv2(x)
+        return out
+
+
+class GhostBlock(nn.Module):
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c1 * e)  # hidden channels
+        self.c = c_
+        self.cv1 = Conv(c1, c_, 3, 1)
+        self.cv2 = nn.Conv2d(c_, c_, 3, 1, autopad(3), groups=c_, bias=False)  # DW卷积
+        self.bn = nn.BatchNorm2d(c_)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x1 = self.cv1(x)
+        x2 = self.relu(self.bn(self.cv2(x1)))
+        x3 = torch.cat((x1, x2), dim=1)
+        return x3
+
+
+class ShuffleGhostBottle(nn.Module):
+    # bottleneck
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):  # ch_in, ch_out, shortcut, groups, expansion
+        super().__init__()
+        c_ = int(c1 * e)  # hidden channels
+        self.c = c_
+        self.cv1 = Conv(c_, c_, 1, 1)
+        self.SE = SELayer(c_, c_//2)
+        self.ghost = GhostBlock(c_, c_)
+        self.add = shortcut
+
+    def forward(self, x):
+        x1, x2 = x.split(self.c, dim=1)
+        x3 = torch.cat((x1, self.cv1(self.SE(self.ghost(x2)))), dim=1)
+        x4 = shuffle_chnls(x3, int(self.c//2))
+        return x4
+
+
+class ShuffleGhostBottleNeck(nn.Module):
+    def __init__(self, c1, c2, n=1, shortcut=True, e=0.5):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super().__init__()
+        self.cv1 = Conv(c1, c2, 1, 1)
+        self.m = nn.Sequential(*(ShuffleGhostBottle(c1, c1) for _ in range(n)))
+        self.add = shortcut
+
+    def forward(self, x):
+        x1 = self.m(x)
+        if self.add:
+            x1 = x1 + x
+        return self.cv1(x1)
+
+
+# ======================= 解耦头=============================#
+class DecoupledHead(nn.Module):
+    def __init__(self, ch=256, nc=80, anchors=()):
+        super().__init__()
+        self.nc = nc  # number of classes
+        self.nl = len(anchors)  # number of detection layers
+        self.na = len(anchors[0]) // 2  # number of anchors
+        # self.merge = Conv(ch, 256, 1, 1)
+        self.cls_convs1 = Conv(ch, ch, 3, 1, 1)
+        # self.cls_convs2 = Conv(256, 256, 3, 1, 1)
+        self.reg_convs1 = Conv(ch, ch, 3, 1, 1)
+        # self.reg_convs2 = Conv(256, 256, 3, 1, 1)
+        self.cls_preds = nn.Conv2d(ch, self.nc * self.na, 1)  # 一个1x1的卷积，把通道数变成类别数，比如coco 80类（主要对目标框的类别，预测分数）
+        self.reg_preds = nn.Conv2d(ch, 4 * self.na, 1)  # 一个1x1的卷积，把通道数变成4通道，因为位置是xywh
+        self.obj_preds = nn.Conv2d(ch, 1 * self.na, 1)  # 一个1x1的卷积，把通道数变成1通道，通过一个值即可判断有无目标（置信度）
+
+    def forward(self, x):
+        # x = self.merge(x)
+        x1 = self.cls_convs1(x)
+        # x1 = self.cls_convs2(x1)
+        x1 = self.cls_preds(x1)
+        x2 = self.reg_convs1(x)
+        # x2 = self.reg_convs2(x2)
+        x21 = self.reg_preds(x2)
+        x22 = self.obj_preds(x2)
+        out = torch.cat([x21, x22, x1], 1)  # 把分类和回归结果按channel维度，即dim=1拼接
+        return out
+
+
+class Decoupled_Detect(nn.Module):
+    stride = None  # strides computed during build
+    onnx_dynamic = False  # ONNX export parameter
+    export = False  # export mode
+
+    def __init__(self, nc=80, anchors=(), ch=(), inplace=True):  # detection layer
+        super().__init__()
+
+        self.nc = nc  # number of classes
+        self.no = nc + 5  # number of outputs per anchor
+        self.nl = len(anchors)  # number of detection layers
+        self.na = len(anchors[0]) // 2  # number of anchors
+        self.grid = [torch.zeros(1)] * self.nl  # init grid
+        self.anchor_grid = [torch.zeros(1)] * self.nl  # init anchor grid
+        self.register_buffer('anchors', torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)
+        self.m = nn.ModuleList(DecoupledHead(x, nc, anchors) for x in ch)
+        self.inplace = inplace  # use in-place ops (e.g. slice assignment)
+
+    def forward(self, x):
+        z = []  # inference output
+        for i in range(self.nl):
+            x[i] = self.m[i](x[i])  # conv
+            bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+            x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+
+            if not self.training:  # inference
+                if self.onnx_dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4]:
+                    self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
+
+                y = x[i].sigmoid()
+                if self.inplace:
+                    y[..., 0:2] = (y[..., 0:2] * 2 + self.grid[i]) * self.stride[i]  # xy
+                    y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
+                else:  # for YOLOv5 on AWS Inferentia https://github.com/ultralytics/yolov5/pull/2953
+                    xy, wh, conf = y.split((2, 2, self.nc + 1), 4)  # y.tensor_split((2, 4, 5), 4)  # torch 1.8.0
+                    xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
+                    wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
+                    y = torch.cat((xy, wh, conf), 4)
+                z.append(y.view(bs, -1, self.no))
+
+        return x if self.training else (torch.cat(z, 1),) if self.export else (torch.cat(z, 1), x)
+
+    def _make_grid(self, nx=20, ny=20, i=0):
+        d = self.anchors[i].device
+        t = self.anchors[i].dtype
+        shape = 1, self.na, ny, nx, 2  # grid shape
+        y, x = torch.arange(ny, device=d, dtype=t), torch.arange(nx, device=d, dtype=t)
+        if check_version(torch.__version__, '1.10.0'):  # torch>=1.10.0 meshgrid workaround for torch>=0.7 compatibility
+            yv, xv = torch.meshgrid(y, x, indexing='ij')
+        else:
+            yv, xv = torch.meshgrid(y, x)
+        grid = torch.stack((xv, yv), 2).expand(shape) - 0.5  # add grid offset, i.e. y = 2.0 * x - 0.5
+        anchor_grid = (self.anchors[i] * self.stride[i]).view((1, self.na, 1, 1, 2)).expand(shape)
+        return grid, anchor_grid

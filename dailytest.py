@@ -47,8 +47,8 @@ if __name__ == '__main__':
     #     for name in model.state_dict():
     #         tst[name] = model.state_dict()[name]
     #         f.write(str(name) + ':' + str(tst[name]) + '\n')
-    im = torch.rand(1, 32, 32, 32).to(device)
-    model = C2fCCnet(32, 32).to(device)
+    im = torch.rand(1, 8, 32, 32).to(device)
+    model = ShuffleBottle(8, 16, 3).to(device)
     out = model(im)
     print(out.shape)
 

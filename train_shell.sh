@@ -48,8 +48,19 @@
 #python ./models/yolo.py --cfg 'ablation-IGC3-SFPN-SUP.yaml'
 #python ./models/yolo.py --cfg 'C3BottleNewSPPFCSPC-Bifpn-upsample.yaml'
 #python ./models/yolo.py --cfg 'C3GhostforsmallSPPFCSPC-Bifpn-upsample-3.yaml'
-
-
+#python ./models/yolo.py --cfg 'yolov7-tiny.yaml'
+#python ./models/yolo.py --cfg 'C3forsmallSPPFCSPC-Bifpn-upsample-Tiny.yaml'
+#python ./models/yolo.py --cfg 'C3forsmallSPPFCSPC-Bifpn-upsample-Tiny-Leaky.yaml'
+#python ./models/yolo.py --cfg 'C3forsmallSPPFCSPC-Bifpn-upsample.yaml'        # 将参数设置为0.25
+#python ./models/yolo.py --cfg 'C3GhostforsmallSPPFCSPC-Bifpn-upsample.yaml'        # YOLO-Tiny 将参数设置为0.25
+#python ./models/yolo.py --cfg 'ShuffleBottleSPPFCSPC-Bifpn-upsample.yaml'
+#python ./models/yolo.py --cfg 'C3GhostforsmallSPPFCSPC-Bifpn-upsample-DHead.yaml'
+#python ./models/yolo.py --cfg 'ShuffleBottleSPPFCSPC-Bifpn-upsample-DHead.yaml'
+#python ./models/yolo.py --cfg 'ShuffleGhostSPPFCSPC-Bifpn-upsample-DHead.yaml'
+#python ./models/yolo.py --cfg 'ShuffleBottleSPPFCSPC-Bifpn-upsample-DHead2.yaml'
+#python ./models/yolo.py --cfg 'ShuffleBottleSPPFCSPC-Bifpn-upsample-DHead3.yaml'
+python ./models/yolo.py --cfg 'ShuffleBottleSPPFCSPC-Bifpn-upsample-DHead4.yaml'
+python ./models/yolo.py --cfg 'ShuffleBottleC3SPPFCSPC-Bifpn-upsample-DHead.yaml'
 
 # 开始训练
 #python ./train.py --cfg 'yolo-CBAM-4.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
@@ -156,6 +167,23 @@
 #python ./train.py --cfg 'ablation-IGC3-SFPN-SUP.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #python ./train.py --cfg 'yolov3.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
 #python ./train.py --cfg 'C3BottleNewSPPFCSPC-Bifpn-upsample.yaml' --epochs '200' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'yolov7-tiny.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'C3forsmallSPPFCSPC-Bifpn-upsample-Tiny.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'C3forsmallSPPFCSPC-Bifpn-upsample-Tiny-Leaky.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+
+#  将参数设置为 0.33，0.25
+#python ./train.py --cfg 'C3forsmallSPPFCSPC-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+# YOLO-TIR-Tiny  将参数设置为 0.33，0.25
+#python ./train.py --cfg 'C3GhostforsmallSPPFCSPC-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'ShuffleBottleSPPFCSPC-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'ShuffleBottleSPPFCSPC-Bifpn-upsample-DHead.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'ShuffleGhostSPPFCSPC-Bifpn-upsample-DHead.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'ShuffleBottleSPPFCSPC-Bifpn-upsample-DHead2.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+#python ./train.py --cfg 'ShuffleBottleSPPFCSPC-Bifpn-upsample-DHead3.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+python ./train.py --cfg 'ShuffleBottleSPPFCSPC-Bifpn-upsample-DHead4.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+python ./train.py --cfg 'ShuffleBottleC3SPPFCSPC-Bifpn-upsample-DHead.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml'
+
+
 
 # 迁移学习
 #python ./train.py --cfg 'C3GhostforsmallSPPFCSPC-Bifpn-upsample.yaml' --epochs '100' --optimizer 'Adam' --hyp './data/hyps/hyp.scratch-low-adam.yaml' --weights './runs/train/exp125/weights/best.pt' --data './data/HTU_TIR.yaml' --patience '100'
@@ -241,29 +269,29 @@
 ## C3GhostforsmallSPPFCSPC-Bifpn-upsample
 #python ./detect.py --weights './runs/train/exp143/weights/best.pt' --source "D:/dataset/FLIR_ADAS_v2/images_thermal_val/data"
 
-# 增量学习之前的结果
-# 5s-baseline
-python ./detect.py --weights './runs/train/exp99/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
-# 3s-baseline
-python ./detect.py --weights './runs/train/exp103/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
-# YOLOv5m-baseline.yaml
-python ./detect.py --weights './runs/train/exp107/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
-# YOLO-FIRI
-python ./detect.py --weights './runs/train/exp119/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
-# C3GhostforsmallSPPFCSPC-Bifpn-upsample
-python ./detect.py --weights './runs/train/exp125/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
+## 增量学习之前的结果
+## 5s-baseline
+#python ./detect.py --weights './runs/train/exp99/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
+## 3s-baseline
+#python ./detect.py --weights './runs/train/exp103/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
+## YOLOv5m-baseline.yaml
+#python ./detect.py --weights './runs/train/exp107/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
+## YOLO-FIRI
+#python ./detect.py --weights './runs/train/exp119/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
+## C3GhostforsmallSPPFCSPC-Bifpn-upsample
+#python ./detect.py --weights './runs/train/exp125/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
 
-# 增量学习之后
-# 5s-baseline
-python ./detect.py --weights './runs/train/exp154/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
-# 3s-baseline
-python ./detect.py --weights './runs/train/exp155/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
-# YOLOv5m-baseline.yaml
-python ./detect.py --weights './runs/train/exp156/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
-# YOLO-FIRI
-python ./detect.py --weights './runs/train/exp157/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
-# C3GhostforsmallSPPFCSPC-Bifpn-upsample
-python ./detect.py --weights './runs/train/exp153/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
+## 增量学习之后
+## 5s-baseline
+#python ./detect.py --weights './runs/train/exp154/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
+## 3s-baseline
+#python ./detect.py --weights './runs/train/exp155/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
+## YOLOv5m-baseline.yaml
+#python ./detect.py --weights './runs/train/exp156/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
+## YOLO-FIRI
+#python ./detect.py --weights './runs/train/exp157/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
+## C3GhostforsmallSPPFCSPC-Bifpn-upsample
+#python ./detect.py --weights './runs/train/exp153/weights/best.pt' --source "C:/Users/Htu/Desktop/HTU_test_detect"
 
 
 
